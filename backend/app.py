@@ -68,90 +68,99 @@ except Exception as e:
 # ==============================================================================
 # 2.5 LÓGICA DE GRAD-CAM (CORREGIDA PARA MODELOS ANIDADOS)
 # ==============================================================================
+def build_gradcam_components(model, conv_layer_name="conv5_block3_out"):
+    """
+    Desacopla el modelo cargado en 3 partes seguras (Preprocesamiento, Backbone y Cabeza)
+    basado en la lógica comprobada del notebook de entrenamiento.
+    """
+    preprocess_layer = None
+    base_resnet = None
+    
+    # 1. Extraer preprocesador y backbone
+    for layer in model.layers:
+        if isinstance(layer, tf.keras.Model) and "resnet" in layer.name.lower():
+            base_resnet = layer
+        elif hasattr(layer, "name") and "preprocess" in layer.name.lower():
+            preprocess_layer = layer
+            
+    if base_resnet is None:
+        raise ValueError("No se encontró sub-modelo ResNet en model.layers")
+
+    # 2. Construir grad_model_base (desde el input de resnet hasta el output y la conv)
+    conv_layer = base_resnet.get_layer(conv_layer_name)
+    grad_model_base = tf.keras.models.Model(
+        inputs=base_resnet.input,
+        outputs=[conv_layer.output, base_resnet.output]
+    )
+
+    # 3. Construir head_model (las capas posteriores a ResNet50)
+    resnet_out_shape = base_resnet.output_shape[1:]
+    inp_head = tf.keras.Input(shape=resnet_out_shape)
+    x = inp_head
+    past_resnet = False
+    
+    for layer in model.layers:
+        if layer is base_resnet:
+            past_resnet = True
+            continue
+        if not past_resnet:
+            continue
+        x = layer(x) # Aquí sí funciona porque x e inp_head comparten la misma topología limpia
+        
+    head_model = tf.keras.models.Model(inputs=inp_head, outputs=x)
+
+    return grad_model_base, preprocess_layer, head_model
+
 def make_gradcam_heatmap(img_array, main_model, pred_index=None):
     """
-    Genera el mapa de calor Grad-CAM de forma nativa para Keras 3.
-    Maneja modelos anidados (como ResNet50 dentro del clasificador) sin romper el grafo.
+    Genera el heatmap usando los 3 componentes desacoplados para evitar
+    el error de positional arguments o disrupciones del GradientTape.
     """
-    
-    # 1. Identificar el backbone anidado (ResNet50)
-    backbone = None
-    for layer in main_model.layers:
-        if hasattr(layer, 'layers'): 
-            backbone = layer
-            break
-            
-    if backbone is None:
-        print("No se detectó un modelo anidado (backbone).")
-        return np.zeros((img_array.shape[1], img_array.shape[2]))
-
-    # 2. Encontrar la última capa Conv2D del backbone
-    last_conv_layer = None
-    for layer in reversed(backbone.layers):
-        if isinstance(layer, tf.keras.layers.Conv2D):
-            last_conv_layer = layer
-            break
-            
-    if last_conv_layer is None:
-        print("No se encontró una capa Conv2D en el backbone.")
-        return np.zeros((img_array.shape[1], img_array.shape[2]))
-
     try:
-        # 3. CONSTRUCCIÓN DEL GRAFO UNIFICADO
-        # Creamos un modelo que va desde la ENTRADA ORIGINAL de tu app hasta el último Conv2D
-        # Esto soluciona los errores de positional arguments porque Keras maneja el flujo.
+        # Obtener los 3 componentes
+        grad_model_base, preprocess_layer, head_model = build_gradcam_components(main_model)
         
-        # Obtenemos el tensor de salida de la convolución evaluándolo desde la entrada global
-        # 'backbone(main_model.inputs)' no funciona directo para sacar capas internas,
-        # así que usamos la API funcional:
-        
-        # Definimos un modelo que extrae la convolución del backbone
-        backbone_extractor = tf.keras.models.Model(
-            inputs=backbone.inputs, 
-            outputs=[last_conv_layer.output, backbone.output]
-        )
-        
-        with tf.GradientTape() as tape:
-            # A. Pasamos la imagen por el PreprocessLayer (capas previas al backbone)
-            x = img_array
-            for layer in main_model.layers:
-                if layer == backbone:
-                    break
-                # Usamos el llamado kwargs estricto para evitar el error posicional
-                x = layer(inputs=x)
-            
-            # B. Obtenemos el mapa de características (Conv2D) y la salida del backbone
-            conv_outputs, backbone_outputs = backbone_extractor(x)
-            tape.watch(conv_outputs)
-            
-            # C. Continuamos el paso hacia adelante con el clasificador
-            y = backbone_outputs
-            start_idx = main_model.layers.index(backbone) + 1
-            for layer in main_model.layers[start_idx:]:
-                # Mismo llamado estricto por si acaso
-                y = layer(inputs=y)
-                
-            preds = y
-            if pred_index is None:
-                pred_index = tf.argmax(preds[0])
-            class_channel = preds[:, pred_index]
+        # 1. Preprocesamiento manual (fuera del Tape, ya que no tiene gradientes entrenables)
+        if preprocess_layer is not None:
+            arr_prep = preprocess_layer(img_array, training=False)
+        else:
+            arr_prep = tf.cast(img_array, tf.float32)
 
-        # 4. Calcular Gradientes
+        # 2. Calcular Grad-CAM en una sola pasada limpia dentro del tape
+        with tf.GradientTape() as tape:
+            conv_outputs, resnet_out = grad_model_base(arr_prep, training=False)
+            tape.watch(conv_outputs) # Vigilar el tensor interno explícitamente
+            
+            predictions = head_model(resnet_out, training=False)
+            
+            if pred_index is None:
+                pred_index = tf.argmax(predictions[0])
+            class_channel = predictions[:, pred_index]
+
+        # 3. Derivadas y promedios
         grads = tape.gradient(class_channel, conv_outputs)
+        
+        if grads is None:
+            print("Error: GradientTape no calculó gradientes (grads=None).")
+            return np.zeros((img_array.shape[1], img_array.shape[2]))
+
         pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
         
-        # 5. Generar Heatmap
+        # 4. Multiplicación de la matriz de activación por los pesos de importancia
         heatmap = conv_outputs[0] @ pooled_grads[..., tf.newaxis]
         heatmap = tf.squeeze(heatmap)
-        heatmap = tf.maximum(heatmap, 0) / tf.math.reduce_max(heatmap)
+        
+        # 5. Normalización (incluimos el + 1e-7 de tu notebook para evitar división por cero)
+        heatmap = tf.maximum(heatmap, 0) / (tf.reduce_max(heatmap) + 1e-7)
         
         return heatmap.numpy()
 
     except Exception as e:
         import traceback
-        print(f"Error interno al generar Grad-CAM: {e}")
+        print(f"Error interno al generar Grad-CAM en FastAPI: {e}")
         traceback.print_exc()
         return np.zeros((img_array.shape[1], img_array.shape[2]))
+
 
 def overlay_gradcam(img_tensor, heatmap, original_filename):
     """Superpone el heatmap sobre la imagen original y la guarda en disco."""
