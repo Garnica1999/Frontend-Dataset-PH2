@@ -69,7 +69,10 @@ except Exception as e:
 # 2.5 LÓGICA DE GRAD-CAM (CORREGIDA PARA MODELOS ANIDADOS)
 # ==============================================================================
 def make_gradcam_heatmap(img_array, main_model, pred_index=None):
-    """Genera el mapa de calor Grad-CAM con búsqueda robusta de la última capa convolucional."""
+    """
+    Genera el mapa de calor Grad-CAM de forma nativa para Keras 3.
+    Maneja modelos anidados (como ResNet50 dentro del clasificador) sin romper el grafo.
+    """
     
     # 1. Identificar el backbone anidado (ResNet50)
     backbone = None
@@ -82,11 +85,9 @@ def make_gradcam_heatmap(img_array, main_model, pred_index=None):
         print("No se detectó un modelo anidado (backbone).")
         return np.zeros((img_array.shape[1], img_array.shape[2]))
 
-    # 2. Búsqueda SEGURA de la última capa convolucional
+    # 2. Encontrar la última capa Conv2D del backbone
     last_conv_layer = None
     for layer in reversed(backbone.layers):
-        # En lugar de consultar output_shape (que falla en capas Activation),
-        # buscamos explícitamente el tipo de capa Conv2D. Es 100% seguro.
         if isinstance(layer, tf.keras.layers.Conv2D):
             last_conv_layer = layer
             break
@@ -96,41 +97,50 @@ def make_gradcam_heatmap(img_array, main_model, pred_index=None):
         return np.zeros((img_array.shape[1], img_array.shape[2]))
 
     try:
-        # 3. Crear el sub-modelo de gradientes
-        grad_model = tf.keras.models.Model(
-            inputs=backbone.inputs,
+        # 3. CONSTRUCCIÓN DEL GRAFO UNIFICADO
+        # Creamos un modelo que va desde la ENTRADA ORIGINAL de tu app hasta el último Conv2D
+        # Esto soluciona los errores de positional arguments porque Keras maneja el flujo.
+        
+        # Obtenemos el tensor de salida de la convolución evaluándolo desde la entrada global
+        # 'backbone(main_model.inputs)' no funciona directo para sacar capas internas,
+        # así que usamos la API funcional:
+        
+        # Definimos un modelo que extrae la convolución del backbone
+        backbone_extractor = tf.keras.models.Model(
+            inputs=backbone.inputs, 
             outputs=[last_conv_layer.output, backbone.output]
         )
         
         with tf.GradientTape() as tape:
-            # Pasar la imagen por las capas PREVIAS al backbone (Tu PreprocessLayer)
+            # A. Pasamos la imagen por el PreprocessLayer (capas previas al backbone)
             x = img_array
             for layer in main_model.layers:
                 if layer == backbone:
                     break
-                x = layer(x)
-                
-            # Pasar el tensor por el backbone
-            conv_outputs, backbone_outputs = grad_model(x)
+                # Usamos el llamado kwargs estricto para evitar el error posicional
+                x = layer(inputs=x)
+            
+            # B. Obtenemos el mapa de características (Conv2D) y la salida del backbone
+            conv_outputs, backbone_outputs = backbone_extractor(x)
             tape.watch(conv_outputs)
             
-            # Pasar por las capas POSTERIORES (GlobalAvgPooling, Dense, Dropout...)
+            # C. Continuamos el paso hacia adelante con el clasificador
             y = backbone_outputs
             start_idx = main_model.layers.index(backbone) + 1
             for layer in main_model.layers[start_idx:]:
-                y = layer(y)
+                # Mismo llamado estricto por si acaso
+                y = layer(inputs=y)
                 
-            # Extraer la predicción final
             preds = y
             if pred_index is None:
                 pred_index = tf.argmax(preds[0])
             class_channel = preds[:, pred_index]
 
-        # 4. Calcular los gradientes reales
+        # 4. Calcular Gradientes
         grads = tape.gradient(class_channel, conv_outputs)
         pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
         
-        # 5. Construir el heatmap final
+        # 5. Generar Heatmap
         heatmap = conv_outputs[0] @ pooled_grads[..., tf.newaxis]
         heatmap = tf.squeeze(heatmap)
         heatmap = tf.maximum(heatmap, 0) / tf.math.reduce_max(heatmap)
