@@ -87,60 +87,69 @@ def make_gradcam_heatmap(img_array, model, pred_index=None):
     if layer_info is None:
         return np.zeros((img_array.shape[1], img_array.shape[2]))
 
-    # Si es una tupla, significa que está dentro de un backbone
-    if isinstance(layer_info, tuple):
-        backbone_name, conv_name = layer_info
-        backbone = model.get_layer(backbone_name)
-        last_conv_layer = backbone.get_layer(conv_name)
-        
-        # Modelo que mapea la entrada del backbone a su capa conv
-        grad_model_bb = tf.keras.models.Model(
-            [backbone.inputs], [last_conv_layer.output, backbone.output]
-        )
-        
-        with tf.GradientTape() as tape:
-            conv_outputs, bb_predictions = grad_model_bb(img_array)
-            # Reemplazamos la salida del backbone en el modelo original para obtener la predicción final
-            # Esto es un poco complejo dinámicamente, así que usaremos el tape sobre todo el modelo
-            tape.watch(conv_outputs)
-            
-            # Reconstruir el pase hacia adelante desde la salida del backbone
-            # Para simplificar y hacerlo genérico, usamos GradientTape y observamos las variables
-    
-    # Enfoque genérico para modelos secuenciales o funcionales planos
-    # Si es anidado, este enfoque simple podría fallar si no reestructuramos.
-    # Intentaremos el enfoque estándar de Keras:
-    
     try:
         if isinstance(layer_info, tuple):
-            bb_layer = model.get_layer(layer_info[0])
-            last_conv_layer = bb_layer.get_layer(layer_info[1])
-            # Crear un modelo que devuelva la activación convolucional y la predicción final
+            bb_name, conv_name = layer_info
+            backbone = model.get_layer(bb_name)
+            last_conv_layer = backbone.get_layer(conv_name)
+            
+            # Modelo que extrae la última conv y la salida del backbone
             grad_model = tf.keras.models.Model(
-                [model.inputs], 
-                [last_conv_layer.output, model.output]
+                [backbone.inputs], [last_conv_layer.output, backbone.output]
             )
+            
+            # Pasar por las capas previas al backbone
+            x = img_array
+            for layer in model.layers:
+                if layer.name == bb_name:
+                    break
+                x = layer(x)
+                
+            with tf.GradientTape() as tape:
+                conv_outputs, bb_outputs = grad_model(x)
+                tape.watch(conv_outputs)
+                
+                # Pasar por las capas posteriores al backbone
+                y = bb_outputs
+                start_idx = model.layers.index(backbone) + 1
+                for layer in model.layers[start_idx:]:
+                    y = layer(y)
+                
+                preds = y
+                if pred_index is None:
+                    pred_index = tf.argmax(preds[0])
+                class_channel = preds[:, pred_index]
+
+            grads = tape.gradient(class_channel, conv_outputs)
+            pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
+            heatmap = conv_outputs[0] @ pooled_grads[..., tf.newaxis]
+            heatmap = tf.squeeze(heatmap)
+            heatmap = tf.maximum(heatmap, 0) / tf.math.reduce_max(heatmap)
+            return heatmap.numpy()
+            
         else:
             grad_model = tf.keras.models.Model(
                 [model.inputs], 
                 [model.get_layer(layer_info).output, model.output]
             )
 
-        with tf.GradientTape() as tape:
-            last_conv_layer_output, preds = grad_model(img_array)
-            if pred_index is None:
-                pred_index = tf.argmax(preds[0])
-            class_channel = preds[:, pred_index]
+            with tf.GradientTape() as tape:
+                last_conv_layer_output, preds = grad_model(img_array)
+                if pred_index is None:
+                    pred_index = tf.argmax(preds[0])
+                class_channel = preds[:, pred_index]
 
-        grads = tape.gradient(class_channel, last_conv_layer_output)
-        pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
-        last_conv_layer_output = last_conv_layer_output[0]
-        heatmap = last_conv_layer_output @ pooled_grads[..., tf.newaxis]
-        heatmap = tf.squeeze(heatmap)
-        heatmap = tf.maximum(heatmap, 0) / tf.math.reduce_max(heatmap)
-        return heatmap.numpy()
+            grads = tape.gradient(class_channel, last_conv_layer_output)
+            pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
+            last_conv_layer_output = last_conv_layer_output[0]
+            heatmap = last_conv_layer_output @ pooled_grads[..., tf.newaxis]
+            heatmap = tf.squeeze(heatmap)
+            heatmap = tf.maximum(heatmap, 0) / tf.math.reduce_max(heatmap)
+            return heatmap.numpy()
     except Exception as e:
+        import traceback
         print(f"Error al generar Grad-CAM: {e}")
+        traceback.print_exc()
         return np.zeros((img_array.shape[1], img_array.shape[2]))
 
 def overlay_gradcam(img_tensor, heatmap):
