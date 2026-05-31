@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detección de Melanoma</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="background-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+    
+    <main class="container">
+        <header>
+            <h1>Detección de Melanoma</h1>
+            <p>Sube una imagen dermatoscópica para analizar su probabilidad de malignidad usando IA.</p>
+        </header>
+
+        <section class="upload-section" id="upload-section">
+            <div class="drop-zone" id="drop-zone">
+                <div class="drop-zone-content">
+                    <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                    <p class="drop-zone-text">Arrastra tu imagen aquí o haz clic para subir</p>
+                    <span class="file-hint">Formatos soportados: JPG, PNG</span>
+                </div>
+                <input type="file" id="file-input" accept="image/*" hidden>
+            </div>
+            
+            <div class="preview-container hidden" id="preview-container">
+                <div class="image-wrapper">
+                    <img id="image-preview" src="" alt="Vista previa">
+                    <button class="remove-btn" id="remove-btn" aria-label="Eliminar imagen">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
+                </div>
+                <button class="analyze-btn" id="analyze-btn">
+                    <span>Analizar Imagen</span>
+                </button>
+            </div>
+        </section>
+
+        <section class="loading-section hidden" id="loading-section">
+            <div class="loader"></div>
+            <p>Analizando con el modelo de IA...</p>
+        </section>
+
+        <section class="result-section hidden" id="result-section">
+            <div class="result-card">
+                <div class="result-header">
+                    <h2 id="result-title">Resultado</h2>
+                </div>
+                <div class="result-body">
+                    <div class="confidence-container">
+                        <svg class="circular-chart" viewBox="0 0 36 36">
+                            <path class="circle-bg"
+                                d="M18 2.0845
+                                a 15.9155 15.9155 0 0 1 0 31.831
+                                a 15.9155 15.9155 0 0 1 0 -31.831"
+                            />
+                            <path class="circle" id="confidence-circle"
+                                stroke-dasharray="0, 100"
+                                d="M18 2.0845
+                                a 15.9155 15.9155 0 0 1 0 31.831
+                                a 15.9155 15.9155 0 0 1 0 -31.831"
+                            />
+                            <text x="18" y="20.35" class="percentage" id="confidence-text">0%</text>
+                        </svg>
+                        <p class="confidence-label">Confianza del modelo</p>
+                    </div>
+                    <div class="result-details" id="result-details">
+                        <!-- Detalles inyectados por JS -->
+                    </div>
+                </div>
+                <button class="reset-btn" id="reset-btn">Analizar otra imagen</button>
+            </div>
+        </section>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>
