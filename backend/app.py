@@ -111,7 +111,7 @@ def make_gradcam_heatmap(img_array, model, pred_index=None):
             
             # Modelo que extrae la última conv y la salida del backbone
             grad_model = tf.keras.models.Model(
-                [backbone.inputs], [last_conv_layer.output, backbone.output]
+                backbone.inputs, [last_conv_layer.output, backbone.output]
             )
             
             # Pasar por las capas previas al backbone
@@ -145,7 +145,7 @@ def make_gradcam_heatmap(img_array, model, pred_index=None):
             
         else:
             grad_model = tf.keras.models.Model(
-                [model.inputs], 
+                model.inputs, 
                 [model.get_layer(layer_info).output, model.output]
             )
 
