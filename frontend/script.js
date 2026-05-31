@@ -22,7 +22,23 @@ document.addEventListener('DOMContentLoaded', () => {
     const probabilitiesList = document.getElementById('probabilities-list');
     const resetBtn = document.getElementById('reset-btn');
 
-    let selectedFile = null;
+    const modelSelector = document.getElementById('model-selector');
+    const tabularSection = document.getElementById('tabular-section');
+    
+    // --- UI Logic ---
+    modelSelector.addEventListener('change', (e) => {
+        const val = e.target.value;
+        if (val === 'resnet50') {
+            tabularSection.classList.add('hidden');
+            uploadSection.classList.remove('hidden');
+        } else if (val === 'tabular') {
+            tabularSection.classList.remove('hidden');
+            uploadSection.classList.add('hidden');
+        } else if (val === 'hibrido') {
+            tabularSection.classList.remove('hidden');
+            uploadSection.classList.remove('hidden');
+        }
+    });
 
     // --- Upload Logic ---
     
@@ -85,18 +101,42 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- API Interaction ---
 
     analyzeBtn.addEventListener('click', async () => {
-        if (!selectedFile) return;
+        const modelType = modelSelector.value;
+        
+        if (modelType !== 'tabular' && !selectedFile) {
+            alert('Por favor, selecciona una imagen para el modelo.');
+            return;
+        }
 
         // Show loading state
         uploadSection.classList.add('hidden');
+        tabularSection.classList.add('hidden');
         loadingSection.classList.remove('hidden');
 
         // Create FormData
         const formData = new FormData();
-        formData.append('image', selectedFile);
+        formData.append('model_type', modelType);
+        
+        if (modelType !== 'tabular') {
+            formData.append('image', selectedFile);
+        }
+
+        if (modelType !== 'resnet50') {
+            formData.append('asymmetry', document.getElementById('asymmetry').value);
+            formData.append('pigment_network', document.getElementById('pigment_network').value);
+            formData.append('dots_globules', document.getElementById('dots_globules').value);
+            formData.append('streaks', document.getElementById('streaks').value);
+            formData.append('regression_areas', document.getElementById('regression_areas').value);
+            formData.append('blue_whitish_veil', document.getElementById('blue_whitish_veil').value);
+            
+            // Collect checked colors
+            const colors = Array.from(document.querySelectorAll('input[name="colors"]:checked'))
+                .map(cb => cb.value)
+                .join(',');
+            formData.append('colors', colors);
+        }
 
         try {
-            // Replace with actual API endpoint
             const response = await fetch('/predict', {
                 method: 'POST',
                 body: formData
@@ -123,11 +163,13 @@ document.addEventListener('DOMContentLoaded', () => {
         resultSection.classList.remove('hidden');
 
         // Set Images
-        resultOriginalImg.src = imagePreview.src;
         if (data.gradcam_url) {
+            resultOriginalImg.src = selectedFile ? imagePreview.src : '';
+            resultOriginalImg.parentElement.classList.remove('hidden');
             resultGradcamImg.src = data.gradcam_url;
             resultGradcamImg.parentElement.classList.remove('hidden');
         } else {
+            resultOriginalImg.parentElement.classList.add('hidden');
             resultGradcamImg.parentElement.classList.add('hidden');
         }
 
@@ -205,11 +247,19 @@ document.addEventListener('DOMContentLoaded', () => {
         selectedFile = null;
         fileInput.value = '';
         
+        // Reset form selections (except model type)
+        document.querySelectorAll('select').forEach(select => {
+            if(select.id !== 'model-selector') select.selectedIndex = 0;
+        });
+        document.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+        
         // Reset UI
         resultSection.classList.add('hidden');
         previewContainer.classList.add('hidden');
         dropZone.classList.remove('hidden');
-        uploadSection.classList.remove('hidden');
+        
+        // Retrigger model selector logic to show appropriate sections
+        modelSelector.dispatchEvent(new Event('change'));
         
         // Reset animation
         confidenceCircle.setAttribute('stroke-dasharray', '0, 100');

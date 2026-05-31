@@ -2,10 +2,12 @@ import os
 import numpy as np
 import cv2
 from datetime import datetime
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
-
+from pydantic import BaseModel
+from typing import Optional
+import joblib
 import tensorflow as tf
 from tensorflow.keras import layers, models, backend as K
 
@@ -64,6 +66,19 @@ except Exception as e:
     print(f"Error al cargar el modelo. Verifica la ruta: {model_path}")
     print(f"Detalle técnico: {e}")
     model = None
+
+print("Cargando modelo Tabular (Exp 14)...")
+tabular_model_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'tabular_model.joblib')
+try:
+    if os.path.exists(tabular_model_path):
+        tabular_model = joblib.load(tabular_model_path)
+        print("¡Modelo tabular cargado exitosamente!")
+    else:
+        print(f"El modelo tabular no se encontró en: {tabular_model_path}")
+        tabular_model = None
+except Exception as e:
+    print(f"Error al cargar el modelo tabular. Detalle: {e}")
+    tabular_model = None
 
 # ==============================================================================
 # 2.5 LÓGICA DE GRAD-CAM (CORREGIDA PARA MODELOS ANIDADOS)
@@ -196,60 +211,149 @@ def overlay_gradcam(img_tensor, heatmap, original_filename):
     return f"/gramcam/{filename}"
 
 # ==============================================================================
-# 3. ENDPOINT DE PREDICCIÓN CON TTA E INTEGRACIÓN GRAD-CAM
+# 3. ENDPOINT DE PREDICCIÓN CON MÚLTIPLES MODELOS
 # ==============================================================================
 @app.post("/predict")
-async def predict(image: UploadFile = File(...)):
-    if not image.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="El archivo proporcionado no es una imagen válida.")
-    
-    if model is None:
-        raise HTTPException(status_code=500, detail="El modelo de IA no está disponible.")
-
+async def predict(
+    model_type: str = Form(...),
+    image: Optional[UploadFile] = File(None),
+    asymmetry: Optional[str] = Form(None),
+    pigment_network: Optional[str] = Form(None),
+    dots_globules: Optional[str] = Form(None),
+    streaks: Optional[str] = Form(None),
+    regression_areas: Optional[str] = Form(None),
+    blue_whitish_veil: Optional[str] = Form(None),
+    colors: Optional[str] = Form(None)
+):
     try:
-        contents = await image.read()
-        
-        img_tensor = tf.io.decode_image(contents, channels=3, expand_animations=False)
-        img_tensor = tf.image.resize(img_tensor, IMG_SIZE)
-        img_tensor = tf.cast(img_tensor, tf.float32)
-        img_tensor = tf.expand_dims(img_tensor, axis=0)
-        
-        # Lógica TTA (8 Augmentations)
-        n_augments = 8
-        proba_sum = model.predict(img_tensor, verbose=0)
-        
-        for _ in range(n_augments - 1):
-            aug_img = tta_aug(img_tensor, training=True)
-            proba_sum += model.predict(aug_img, verbose=0)
+        # --- LÓGICA DE IMAGEN (RESNET50) ---
+        async def process_image():
+            if image is None or not image.content_type.startswith("image/"):
+                raise ValueError("El archivo proporcionado no es una imagen válida.")
+            if model is None:
+                raise ValueError("El modelo de IA (ResNet) no está disponible en el servidor.")
+
+            contents = await image.read()
+            img_tensor = tf.io.decode_image(contents, channels=3, expand_animations=False)
+            img_tensor = tf.image.resize(img_tensor, IMG_SIZE)
+            img_tensor = tf.cast(img_tensor, tf.float32)
+            img_tensor = tf.expand_dims(img_tensor, axis=0)
             
-        proba_avg = proba_sum / n_augments
-        probs_array = proba_avg[0]
-        
+            n_augments = 8
+            proba_sum = model.predict(img_tensor, verbose=0)
+            for _ in range(n_augments - 1):
+                aug_img = tta_aug(img_tensor, training=True)
+                proba_sum += model.predict(aug_img, verbose=0)
+                
+            proba_avg = proba_sum / n_augments
+            probs_array = proba_avg[0]
+            
+            # Generar Grad-CAM
+            gradcam_url = None
+            try:
+                idx = np.argmax(probs_array)
+                heatmap = make_gradcam_heatmap(img_tensor, model, pred_index=idx)
+                gradcam_url = overlay_gradcam(img_tensor, heatmap, image.filename)
+            except Exception as e:
+                print(f"Error Grad-CAM: {e}")
+            
+            return probs_array, gradcam_url
+
+        # --- LÓGICA TABULAR (REGRESIÓN LOGÍSTICA) ---
+        def process_tabular():
+            if tabular_model is None:
+                raise ValueError("El modelo Tabular no está disponible en el servidor.")
+                
+            try:
+                # Diccionarios de mapeo para convertir texto a número
+                map_pigment = {'A': 0, 'AT': 1, 'T': 2}
+                map_dots = {'A': 0, 'AT': 1, 'P': 2, 'T': 3}
+                map_binary = {'A': 0, 'P': 1}
+                
+                # 1. Extraer Asymmetry (0, 1, 2)
+                f_asym = int(asymmetry) if asymmetry else 0
+                
+                # 2. Extraer Categóricos
+                f_pigment = map_pigment.get(pigment_network, 0)
+                f_dots = map_dots.get(dots_globules, 0)
+                f_streaks = map_binary.get(streaks, 0)
+                f_reg = map_binary.get(regression_areas, 0)
+                f_blue = map_binary.get(blue_whitish_veil, 0)
+                
+                # 3. Extraer Colores (vienen separados por coma, ej: "1,3,4")
+                selected_colors = colors.split(',') if colors else []
+                f_c1 = 1 if '1' in selected_colors else 0
+                f_c2 = 1 if '2' in selected_colors else 0
+                f_c3 = 1 if '3' in selected_colors else 0
+                f_c4 = 1 if '4' in selected_colors else 0
+                f_c5 = 1 if '5' in selected_colors else 0
+                f_c6 = 1 if '6' in selected_colors else 0
+                
+                # Vector de características (1 fila, 12 columnas)
+                # NOTA: Ajusta el orden de estas variables si difiere de tu entrenamiento
+                features = np.array([[
+                    f_asym, f_pigment, f_dots, f_streaks, f_reg, f_blue,
+                    f_c1, f_c2, f_c3, f_c4, f_c5, f_c6
+                ]])
+                
+                # Inferencia
+                probs = tabular_model.predict_proba(features)[0]
+                
+                # Si el modelo fue entrenado con 2 clases (Benigno vs Maligno)
+                if len(probs) == 2:
+                    return np.array([probs[0], 0.0, probs[1]])
+                # Si fue entrenado con las 3 clases originales
+                elif len(probs) == 3:
+                    return probs
+                else:
+                    raise ValueError(f"El modelo tabular retornó {len(probs)} clases en lugar de 3.")
+                    
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                raise ValueError(f"Error procesando datos tabulares: {e}")
+
+        # --- ENRUTAMIENTO SEGÚN EL TIPO DE MODELO ---
+        probs_array = None
+        gradcam_url = None
+        filename_out = image.filename if image else "tabular_data"
+
+        if model_type == "resnet50":
+            probs_array, gradcam_url = await process_image()
+            
+        elif model_type == "tabular":
+            probs_array = process_tabular()
+            
+        elif model_type == "hibrido":
+            # Ensamble 50/50
+            probs_img, gradcam_url = await process_image()
+            probs_tab = process_tabular()
+            probs_array = (probs_img * 0.5) + (probs_tab * 0.5)
+            
+        else:
+            raise HTTPException(status_code=400, detail="Tipo de modelo no reconocido.")
+
+        # --- DETERMINAR CLASE FINAL ---
         idx_ganador = np.argmax(probs_array)
         clase_predicha = CLASS_NAMES[idx_ganador]
         is_cancer = bool(idx_ganador == 2)
         confidence = float(probs_array[idx_ganador])
-        
         detalles = {clase: float(probs_array[i]) for i, clase in enumerate(CLASS_NAMES)}
-
-        # Generar Grad-CAM basado en el diagnóstico principal
-        try:
-            heatmap = make_gradcam_heatmap(img_tensor, model, pred_index=idx_ganador)
-            gradcam_url = overlay_gradcam(img_tensor, heatmap, image.filename)
-        except Exception as e:
-            print(f"Error generando superposición: {e}")
-            gradcam_url = None
 
         return JSONResponse(content={
             "is_cancer": is_cancer,
             "confidence": confidence,
             "predicted_class": clase_predicha,
             "probabilities": detalles,
-            "filename": image.filename,
+            "filename": filename_out,
             "gradcam_url": gradcam_url
         })
 
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error durante la inferencia: {str(e)}")
 
 # ==============================================================================

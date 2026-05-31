@@ -16,8 +16,84 @@
     <main class="container">
         <header>
             <h1>Detección de Melanoma</h1>
-            <p>Sube una imagen dermatoscópica para analizar su probabilidad de malignidad usando IA.</p>
+            <p>Analiza la probabilidad de malignidad usando IA en imágenes y datos clínicos.</p>
         </header>
+
+        <section class="model-selector-section">
+            <div class="selector-card">
+                <label for="model-selector">Selecciona el Modelo:</label>
+                <select id="model-selector" class="model-select">
+                    <option value="resnet50" selected>ResNet50 (Solo Imagen)</option>
+                    <option value="tabular">Tabular (Solo Datos Clínicos)</option>
+                    <option value="hibrido">Híbrido (Ensamble Imagen + Datos)</option>
+                </select>
+            </div>
+        </section>
+
+        <section class="tabular-section hidden" id="tabular-section">
+            <div class="tabular-card">
+                <h2>Datos Clínicos (Dataset PH2)</h2>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="asymmetry">Asymmetry</label>
+                        <select id="asymmetry" name="asymmetry">
+                            <option value="0">0 - Fully Symmetric</option>
+                            <option value="1">1 - Symmetric in 1 axe</option>
+                            <option value="2">2 - Fully Asymmetric</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="pigment_network">Pigment Network</label>
+                        <select id="pigment_network" name="pigment_network">
+                            <option value="A">Absent (A)</option>
+                            <option value="AT">Atypical (AT)</option>
+                            <option value="T">Typical (T)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="dots_globules">Dots/Globules</label>
+                        <select id="dots_globules" name="dots_globules">
+                            <option value="A">Absent (A)</option>
+                            <option value="AT">Atypical (AT)</option>
+                            <option value="P">Present (P)</option>
+                            <option value="T">Typical (T)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="streaks">Streaks</label>
+                        <select id="streaks" name="streaks">
+                            <option value="A">Absent (A)</option>
+                            <option value="P">Present (P)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="regression_areas">Regression Areas</label>
+                        <select id="regression_areas" name="regression_areas">
+                            <option value="A">Absent (A)</option>
+                            <option value="P">Present (P)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="blue_whitish_veil">Blue-Whitish Veil</label>
+                        <select id="blue_whitish_veil" name="blue_whitish_veil">
+                            <option value="A">Absent (A)</option>
+                            <option value="P">Present (P)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group colors-group">
+                    <label>Colors</label>
+                    <div class="checkbox-grid">
+                        <label><input type="checkbox" name="colors" value="1"> White</label>
+                        <label><input type="checkbox" name="colors" value="2"> Red</label>
+                        <label><input type="checkbox" name="colors" value="3"> Light-Brown</label>
+                        <label><input type="checkbox" name="colors" value="4"> Dark-Brown</label>
+                        <label><input type="checkbox" name="colors" value="5"> Blue-Gray</label>
+                        <label><input type="checkbox" name="colors" value="6"> Black</label>
+                    </div>
+                </div>
+            </div>
+        </section>
 
         <section class="upload-section" id="upload-section">
             <div class="drop-zone" id="drop-zone">
@@ -40,10 +116,13 @@
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                     </button>
                 </div>
-                <button class="analyze-btn" id="analyze-btn">
-                    <span>Analizar Imagen</span>
-                </button>
             </div>
+        </section>
+
+        <section class="action-section" style="margin-top: 1rem;">
+            <button class="analyze-btn" id="analyze-btn">
+                <span>Analizar Datos</span>
+            </button>
         </section>
 
         <section class="loading-section hidden" id="loading-section">
