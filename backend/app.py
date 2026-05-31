@@ -259,28 +259,25 @@ async def predict(
             
             return probs_array, gradcam_url
 
-        # --- LÓGICA TABULAR (REGRESIÓN LOGÍSTICA) ---
+        # --- LÓGICA TABULAR (REGRESIÓN LOGÍSTICA / RANDOM FOREST) ---
         def process_tabular():
             if tabular_model is None:
                 raise ValueError("El modelo Tabular no está disponible en el servidor.")
                 
             try:
-                # Diccionarios de mapeo para convertir texto a número
-                map_pigment = {'A': 0, 'AT': 1, 'T': 2}
-                map_dots = {'A': 0, 'AT': 1, 'P': 2, 'T': 3}
-                map_binary = {'A': 0, 'P': 1}
+                import pandas as pd
                 
-                # 1. Extraer Asymmetry (0, 1, 2)
-                f_asym = int(asymmetry) if asymmetry else 0
+                # 1. Extraer Asymmetry
+                f_asym = float(asymmetry) if asymmetry else 0.0
                 
-                # 2. Extraer Categóricos
-                f_pigment = map_pigment.get(pigment_network, 0)
-                f_dots = map_dots.get(dots_globules, 0)
-                f_streaks = map_binary.get(streaks, 0)
-                f_reg = map_binary.get(regression_areas, 0)
-                f_blue = map_binary.get(blue_whitish_veil, 0)
+                # 2. Categóricos mapeados a la lógica del entrenamiento (1 si es T/P, 0 en otro caso)
+                f_pigment = 1 if pigment_network == 'T' else 0
+                f_dots = 1 if dots_globules == 'T' else 0
+                f_streaks = 1 if streaks == 'P' else 0
+                f_blue = 1 if blue_whitish_veil == 'P' else 0
+                f_reg = 1 if regression_areas == 'P' else 0
                 
-                # 3. Extraer Colores (vienen separados por coma, ej: "1,3,4")
+                # 3. Extraer Colores
                 selected_colors = colors.split(',') if colors else []
                 f_c1 = 1 if '1' in selected_colors else 0
                 f_c2 = 1 if '2' in selected_colors else 0
@@ -288,16 +285,29 @@ async def predict(
                 f_c4 = 1 if '4' in selected_colors else 0
                 f_c5 = 1 if '5' in selected_colors else 0
                 f_c6 = 1 if '6' in selected_colors else 0
+                total_colors = f_c1 + f_c2 + f_c3 + f_c4 + f_c5 + f_c6
                 
-                # Vector de características (1 fila, 12 columnas)
-                # NOTA: Ajusta el orden de estas variables si difiere de tu entrenamiento
-                features = np.array([[
-                    f_asym, f_pigment, f_dots, f_streaks, f_reg, f_blue,
-                    f_c1, f_c2, f_c3, f_c4, f_c5, f_c6
-                ]])
+                # 4. Construir Diccionario con los 13 features requeridos por el modelo
+                feats = {
+                    'Asymmetry': [f_asym],
+                    'Pigment_Network': [f_pigment],
+                    'Dots_Globules_T': [f_dots],
+                    'Streaks': [f_streaks],
+                    'Blue_Veil': [f_blue],
+                    'Regression': [f_reg],
+                    'Color_White': [f_c1],
+                    'Color_Red': [f_c2],
+                    'Color_Light_Brown': [f_c3],
+                    'Color_Dark_Brown': [f_c4],
+                    'Color_Blue_Gray': [f_c5],
+                    'Color_Black': [f_c6],
+                    'Total_Colors': [total_colors]
+                }
+                
+                X = pd.DataFrame(feats)
                 
                 # Inferencia
-                probs = tabular_model.predict_proba(features)[0]
+                probs = tabular_model.predict_proba(X)[0]
                 
                 # Si el modelo fue entrenado con 2 clases (Benigno vs Maligno)
                 if len(probs) == 2:
