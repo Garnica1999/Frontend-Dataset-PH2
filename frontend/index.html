@@ -6,6 +6,7 @@
     <title>Detección de Melanoma</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 </head>
 <body>
     <div class="background-blobs">
@@ -173,9 +174,21 @@
                         <!-- Lista inyectada por JS -->
                     </div>
                 </div>
-                <button class="reset-btn" id="reset-btn">Analizar otra imagen</button>
-            </div>
+                <div class="action-buttons">
+                    <button class="reset-btn" id="reset-btn">Analizar otra imagen</button>
+                    <button class="pdf-btn" id="pdf-btn">Descargar Reporte PDF</button>
+                </div>
+            </div> 
         </section>
+
+        <div id="history-sidebar" class="history-sidebar collapsed">
+            <button id="toggle-history-btn" class="toggle-history-btn">📋 Recientes</button>
+            <div class="history-content">
+                <h3>Análisis Recientes</h3>
+                <div id="history-list"></div>
+                <button id="clear-history-btn" class="clear-history-btn">Borrar Historial</button>
+            </div>
+        </div>
     </main>
 
     <script src="script.js"></script>

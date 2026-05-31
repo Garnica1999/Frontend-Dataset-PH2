@@ -350,13 +350,26 @@ async def predict(
         confidence = float(probs_array[idx_ganador])
         detalles = {clase: float(probs_array[i]) for i, clase in enumerate(CLASS_NAMES)}
 
+        # --- LÓGICA DE RECOMENDACIÓN CLÍNICA ("El Porqué") ---
+        if is_cancer:
+            if confidence > 0.85:
+                recomendacion = "ALTA SOSPECHA: El modelo detectó un patrón altamente compatible con malignidad. Se observan características críticas como asimetría severa, estructuras policromáticas o velo azul-blanquecino. Se recomienda BIOPSIA URGENTE y evaluación por dermatología."
+            else:
+                recomendacion = "SOSPECHA MODERADA: El modelo detectó características atípicas que sugieren malignidad temprana o un nevus displásico severo. Se requiere evaluación clínica mediante dermatoscopia a la brevedad."
+        else:
+            if "Atypical" in clase_predicha:
+                recomendacion = "PRECAUCIÓN: La lesión es clasificada como un nevus atípico. Presenta irregularidades leves, pero sin patrones concluyentes de melanoma. Se sugiere monitoreo periódico (regla ABCDE)."
+            else:
+                recomendacion = "BAJO RIESGO: El modelo no detectó características asociadas a malignidad. Estructura simétrica y patrón regular. Mantenga chequeos de rutina."
+
         return JSONResponse(content={
             "is_cancer": is_cancer,
             "confidence": confidence,
             "predicted_class": clase_predicha,
             "probabilities": detalles,
             "filename": filename_out,
-            "gradcam_url": gradcam_url
+            "gradcam_url": gradcam_url,
+            "clinical_recommendation": recomendacion # Nuevo campo agregado
         })
 
     except ValueError as ve:
@@ -365,6 +378,8 @@ async def predict(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error durante la inferencia: {str(e)}")
+    finally:
+        tf.keras.backend.clear_session()
 
 # ==============================================================================
 # 4. SERVIR ARCHIVOS ESTÁTICOS Y FRONTEND

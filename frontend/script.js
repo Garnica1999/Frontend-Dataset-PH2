@@ -20,11 +20,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const confidenceText = document.getElementById('confidence-text');
     const resultDetails = document.getElementById('result-details');
     const probabilitiesList = document.getElementById('probabilities-list');
+    
+    // Elementos de las nuevas funcionalidades
     const resetBtn = document.getElementById('reset-btn');
+    const pdfBtn = document.getElementById('pdf-btn');
+    const historySidebar = document.getElementById('history-sidebar');
+    const toggleHistoryBtn = document.getElementById('toggle-history-btn');
+    const historyList = document.getElementById('history-list');
+    const clearHistoryBtn = document.getElementById('clear-history-btn');
 
     const modelSelector = document.getElementById('model-selector');
     const tabularSection = document.getElementById('tabular-section');
     
+    let selectedFile = null;
+
     // --- UI Logic ---
     modelSelector.addEventListener('change', (e) => {
         const val = e.target.value;
@@ -41,11 +50,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- Upload Logic ---
-    
-    // Click to upload
     dropZone.addEventListener('click', () => fileInput.click());
 
-    // Drag and drop
     dropZone.addEventListener('dragover', (e) => {
         e.preventDefault();
         dropZone.classList.add('dragover');
@@ -64,7 +70,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // File input change
     fileInput.addEventListener('change', (e) => {
         if (e.target.files.length) {
             handleFile(e.target.files[0]);
@@ -89,7 +94,6 @@ document.addEventListener('DOMContentLoaded', () => {
         reader.readAsDataURL(file);
     }
 
-    // Remove image
     removeBtn.addEventListener('click', () => {
         selectedFile = null;
         fileInput.value = '';
@@ -99,7 +103,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- API Interaction ---
-
     analyzeBtn.addEventListener('click', async () => {
         const modelType = modelSelector.value;
         
@@ -154,7 +157,8 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Reset UI
             loadingSection.classList.add('hidden');
-            uploadSection.classList.remove('hidden');
+            if (modelType !== 'tabular') uploadSection.classList.remove('hidden');
+            if (modelType !== 'resnet50') tabularSection.classList.remove('hidden');
         }
     });
 
@@ -183,43 +187,38 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 100);
 
         confidenceText.textContent = `${confidenceValue}%`;
-
-        // Mostrar clase mayoritaria
         resultMajorityClass.textContent = `Diagnóstico: ${predictedClass}`;
 
-        // Update colors and text based on result
+        // Update colors based on result
         if (isCancer) {
             resultTitle.textContent = "ALTO RIESGO";
             resultTitle.className = "result-title-danger";
             resultMajorityClass.style.color = "var(--danger)";
             confidenceCircle.className.baseVal = "circle danger";
-            
-            resultDetails.innerHTML = `
-                <h3 style="color: var(--danger)">Posible Melanoma Detectado</h3>
-                <p style="color: var(--text-muted); font-size: 0.9rem;">
-                    El modelo indica características asociadas a malignidad. Se recomienda fuertemente consultar con un dermatólogo para un diagnóstico profesional.
-                </p>
-            `;
         } else {
             resultTitle.textContent = "BAJO RIESGO";
             resultTitle.className = "result-title-success";
             resultMajorityClass.style.color = "var(--success)";
             confidenceCircle.className.baseVal = "circle success";
-            
-            resultDetails.innerHTML = `
-                <h3 style="color: var(--success)">Sin signos evidentes de malignidad</h3>
-                <p style="color: var(--text-muted); font-size: 0.9rem;">
-                    El modelo no detectó características fuertemente asociadas a melanoma. Sin embargo, mantén revisiones periódicas con tu médico.
-                </p>
-            `;
         }
+
+        // Lógica de Recomendación Clínica ("El Porqué")
+        const colorRecomendacion = isCancer ? "var(--danger)" : "var(--success)";
+        const tituloRecomendacion = isCancer ? "Posible Melanoma Detectado" : "Sin signos evidentes de malignidad";
+        const recomendacionTexto = data.clinical_recommendation || (isCancer ? 'Se recomienda fuertemente consultar con un dermatólogo para un diagnóstico profesional.' : 'Mantenga revisiones periódicas con su médico.');
+
+        resultDetails.innerHTML = `
+            <h3 style="color: ${colorRecomendacion}">${tituloRecomendacion}</h3>
+            <p style="color: var(--text-muted); font-size: 0.95rem; line-height: 1.5; margin-top: 10px; background: #f8f9fa; padding: 15px; border-left: 4px solid ${colorRecomendacion}; border-radius: 4px;">
+                <strong>Contexto Clínico:</strong> ${recomendacionTexto}
+            </p>
+        `;
 
         // Render probabilities list
         if (data.probabilities) {
             let probsHtml = '<h3>Probabilidades por Clase</h3>';
             for (const [className, prob] of Object.entries(data.probabilities)) {
                 const probPercent = (prob * 100).toFixed(1);
-                // Assign color based on class
                 let barColor = 'var(--primary)';
                 if (className.toLowerCase().includes('melanoma')) barColor = 'var(--danger)';
                 else if (className.toLowerCase().includes('common nevus')) barColor = 'var(--success)';
@@ -239,29 +238,105 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             probabilitiesList.classList.add('hidden');
         }
+
+        // Guardar en el Historial Local
+        saveToHistory({
+            filename: data.filename || 'Análisis Tabular',
+            clase: predictedClass,
+            confianza: confidenceValue,
+            fecha: new Date().toLocaleString(),
+            isCancer: isCancer,
+            // Si no hay foto (solo tabular), usamos un placeholder genérico
+            imgSrc: (selectedFile && imagePreview.src) ? imagePreview.src : 'https://via.placeholder.com/50/e2e8f0/64748b?text=Tab'
+        });
     }
 
-    // Reset Flow
-    resetBtn.addEventListener('click', () => {
-        // Reset state
-        selectedFile = null;
-        fileInput.value = '';
-        
-        // Reset form selections (except model type)
-        document.querySelectorAll('select').forEach(select => {
-            if(select.id !== 'model-selector') select.selectedIndex = 0;
+    // --- NUEVAS FUNCIONALIDADES (PDF E HISTORIAL) ---
+
+    // Descarga de PDF
+    if (pdfBtn) {
+        pdfBtn.addEventListener('click', () => {
+            const resultElement = document.querySelector('.result-card');
+            const opt = {
+                margin:       0.5,
+                filename:     'Reporte_Dermatologico_IA.pdf',
+                image:        { type: 'jpeg', quality: 0.98 },
+                html2canvas:  { scale: 2, useCORS: true }, 
+                jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+            };
+            html2pdf().set(opt).from(resultElement).save();
         });
-        document.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+    }
+
+    // Toggle Panel Lateral
+    if (toggleHistoryBtn && historySidebar) {
+        toggleHistoryBtn.addEventListener('click', () => {
+            historySidebar.classList.toggle('collapsed');
+        });
+    }
+
+    function saveToHistory(record) {
+        let history = JSON.parse(localStorage.getItem('melanomaHistory')) || [];
+        history.unshift(record); 
+        // Limitar a los 5 análisis más recientes para ahorrar espacio en memoria
+        if (history.length > 5) history.pop(); 
+        localStorage.setItem('melanomaHistory', JSON.stringify(history));
+        renderHistory();
+    }
+
+    function renderHistory() {
+        if (!historyList) return;
+        let history = JSON.parse(localStorage.getItem('melanomaHistory')) || [];
+        historyList.innerHTML = '';
         
-        // Reset UI
-        resultSection.classList.add('hidden');
-        previewContainer.classList.add('hidden');
-        dropZone.classList.remove('hidden');
-        
-        // Retrigger model selector logic to show appropriate sections
-        modelSelector.dispatchEvent(new Event('change'));
-        
-        // Reset animation
-        confidenceCircle.setAttribute('stroke-dasharray', '0, 100');
-    });
+        if(history.length === 0) {
+            historyList.innerHTML = '<p style="color: #666; font-size: 0.9rem;">No hay análisis recientes.</p>';
+            return;
+        }
+
+        history.forEach(item => {
+            const colorClass = item.isCancer ? 'color: var(--danger);' : 'color: var(--success);';
+            const historyItem = document.createElement('div');
+            historyItem.className = 'history-item';
+            historyItem.innerHTML = `
+                <img src="${item.imgSrc}" alt="Miniatura">
+                <div class="history-item-info">
+                    <strong style="${colorClass}">${item.clase} (${item.confianza}%)</strong>
+                    <span>${item.fecha}</span>
+                </div>
+            `;
+            historyList.appendChild(historyItem);
+        });
+    }
+
+    // Limpiar Historial
+    if (clearHistoryBtn) {
+        clearHistoryBtn.addEventListener('click', () => {
+            localStorage.removeItem('melanomaHistory');
+            renderHistory();
+        });
+    }
+
+    // Cargar historial al inicializar la página
+    renderHistory();
+
+    // --- Reset Flow ---
+    if (resetBtn) {
+        resetBtn.addEventListener('click', () => {
+            selectedFile = null;
+            fileInput.value = '';
+            
+            document.querySelectorAll('select').forEach(select => {
+                if(select.id !== 'model-selector') select.selectedIndex = 0;
+            });
+            document.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+            
+            resultSection.classList.add('hidden');
+            previewContainer.classList.add('hidden');
+            dropZone.classList.remove('hidden');
+            
+            modelSelector.dispatchEvent(new Event('change'));
+            confidenceCircle.setAttribute('stroke-dasharray', '0, 100');
+        });
+    }
 });
