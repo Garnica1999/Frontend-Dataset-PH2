@@ -12,6 +12,8 @@ from tensorflow.keras import layers, models, backend as K
 from tensorflow.keras.applications.efficientnet import preprocess_input as eff_preprocess
 from tensorflow.keras.applications.resnet50 import preprocess_input as resnet_preprocess
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input as mbn_preprocess
+import cv2
+import base64
 
 # ==============================================================================
 # 1. REGISTRO DE LA CAPA CUSTOM (Crucial para poder cargar el modelo)
@@ -65,6 +67,105 @@ except Exception as e:
     model = None
 
 # ==============================================================================
+# 2.5 LÓGICA DE GRAD-CAM
+# ==============================================================================
+def find_last_conv_layer(model):
+    """Busca dinámicamente la última capa convolucional (salida 4D)."""
+    for layer in reversed(model.layers):
+        if len(layer.output_shape) == 4:
+            return layer.name
+        # Si es un modelo anidado (backbone)
+        elif isinstance(layer, tf.keras.Model):
+            for inner_layer in reversed(layer.layers):
+                if len(inner_layer.output_shape) == 4:
+                    return layer.name, inner_layer.name
+    return None
+
+def make_gradcam_heatmap(img_array, model, pred_index=None):
+    """Genera el mapa de calor Grad-CAM."""
+    layer_info = find_last_conv_layer(model)
+    if layer_info is None:
+        return np.zeros((img_array.shape[1], img_array.shape[2]))
+
+    # Si es una tupla, significa que está dentro de un backbone
+    if isinstance(layer_info, tuple):
+        backbone_name, conv_name = layer_info
+        backbone = model.get_layer(backbone_name)
+        last_conv_layer = backbone.get_layer(conv_name)
+        
+        # Modelo que mapea la entrada del backbone a su capa conv
+        grad_model_bb = tf.keras.models.Model(
+            [backbone.inputs], [last_conv_layer.output, backbone.output]
+        )
+        
+        with tf.GradientTape() as tape:
+            conv_outputs, bb_predictions = grad_model_bb(img_array)
+            # Reemplazamos la salida del backbone en el modelo original para obtener la predicción final
+            # Esto es un poco complejo dinámicamente, así que usaremos el tape sobre todo el modelo
+            tape.watch(conv_outputs)
+            
+            # Reconstruir el pase hacia adelante desde la salida del backbone
+            # Para simplificar y hacerlo genérico, usamos GradientTape y observamos las variables
+    
+    # Enfoque genérico para modelos secuenciales o funcionales planos
+    # Si es anidado, este enfoque simple podría fallar si no reestructuramos.
+    # Intentaremos el enfoque estándar de Keras:
+    
+    try:
+        if isinstance(layer_info, tuple):
+            bb_layer = model.get_layer(layer_info[0])
+            last_conv_layer = bb_layer.get_layer(layer_info[1])
+            # Crear un modelo que devuelva la activación convolucional y la predicción final
+            grad_model = tf.keras.models.Model(
+                [model.inputs], 
+                [last_conv_layer.output, model.output]
+            )
+        else:
+            grad_model = tf.keras.models.Model(
+                [model.inputs], 
+                [model.get_layer(layer_info).output, model.output]
+            )
+
+        with tf.GradientTape() as tape:
+            last_conv_layer_output, preds = grad_model(img_array)
+            if pred_index is None:
+                pred_index = tf.argmax(preds[0])
+            class_channel = preds[:, pred_index]
+
+        grads = tape.gradient(class_channel, last_conv_layer_output)
+        pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
+        last_conv_layer_output = last_conv_layer_output[0]
+        heatmap = last_conv_layer_output @ pooled_grads[..., tf.newaxis]
+        heatmap = tf.squeeze(heatmap)
+        heatmap = tf.maximum(heatmap, 0) / tf.math.reduce_max(heatmap)
+        return heatmap.numpy()
+    except Exception as e:
+        print(f"Error al generar Grad-CAM: {e}")
+        return np.zeros((img_array.shape[1], img_array.shape[2]))
+
+def overlay_gradcam(img_tensor, heatmap):
+    """Superpone el heatmap sobre la imagen original."""
+    img = img_tensor[0].numpy()
+    # Asegurar que img esté en 0-255 uint8
+    if np.max(img) <= 1.0:
+        img = (img * 255).astype(np.uint8)
+    else:
+        img = img.astype(np.uint8)
+    
+    # Redimensionar heatmap al tamaño de la imagen
+    heatmap = cv2.resize(heatmap, (img.shape[1], img.shape[0]))
+    heatmap = np.uint8(255 * heatmap)
+    heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
+    
+    # Superponer con 40% de opacidad para el heatmap
+    superimposed_img = cv2.addWeighted(img, 0.6, heatmap, 0.4, 0)
+    
+    # Convertir a base64
+    _, buffer = cv2.imencode('.jpg', cv2.cvtColor(superimposed_img, cv2.COLOR_RGB2BGR))
+    base64_str = base64.b64encode(buffer).decode('utf-8')
+    return base64_str
+
+# ==============================================================================
 # 3. ENDPOINT DE PREDICCIÓN CON TTA (EXPERIMENTO 13)
 # ==============================================================================
 @app.post("/predict")
@@ -114,12 +215,21 @@ async def predict(image: UploadFile = File(...)):
         # Armamos un diccionario con el detalle de probabilidades para el frontend
         detalles = {clase: float(probs_array[i]) for i, clase in enumerate(CLASS_NAMES)}
 
+        # 3.6 Generar Grad-CAM
+        try:
+            heatmap = make_gradcam_heatmap(img_tensor, model, pred_index=idx_ganador)
+            gradcam_base64 = overlay_gradcam(img_tensor, heatmap)
+        except Exception as e:
+            print(f"Error al generar Grad-CAM overlay: {e}")
+            gradcam_base64 = None
+
         return JSONResponse(content={
             "is_cancer": is_cancer,
             "confidence": confidence,
             "predicted_class": clase_predicha,
             "probabilities": detalles,
-            "filename": image.filename
+            "filename": image.filename,
+            "gradcam_base64": gradcam_base64
         })
 
     except Exception as e:

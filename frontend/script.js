@@ -12,9 +12,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const resultSection = document.getElementById('result-section');
     
     const resultTitle = document.getElementById('result-title');
+    const resultMajorityClass = document.getElementById('result-majority-class');
+    const resultOriginalImg = document.getElementById('result-original-img');
+    const resultGradcamImg = document.getElementById('result-gradcam-img');
+    
     const confidenceCircle = document.getElementById('confidence-circle');
     const confidenceText = document.getElementById('confidence-text');
     const resultDetails = document.getElementById('result-details');
+    const probabilitiesList = document.getElementById('probabilities-list');
     const resetBtn = document.getElementById('reset-btn');
 
     let selectedFile = null;
@@ -117,8 +122,18 @@ document.addEventListener('DOMContentLoaded', () => {
         loadingSection.classList.add('hidden');
         resultSection.classList.remove('hidden');
 
+        // Set Images
+        resultOriginalImg.src = imagePreview.src;
+        if (data.gradcam_base64) {
+            resultGradcamImg.src = `data:image/jpeg;base64,${data.gradcam_base64}`;
+            resultGradcamImg.parentElement.classList.remove('hidden');
+        } else {
+            resultGradcamImg.parentElement.classList.add('hidden');
+        }
+
         const isCancer = data.is_cancer;
         const confidenceValue = (data.confidence * 100).toFixed(1);
+        const predictedClass = data.predicted_class || (isCancer ? 'Melanoma' : 'Benigno');
         
         // Setup circle animation
         setTimeout(() => {
@@ -127,10 +142,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         confidenceText.textContent = `${confidenceValue}%`;
 
+        // Mostrar clase mayoritaria
+        resultMajorityClass.textContent = `Diagnóstico: ${predictedClass}`;
+
         // Update colors and text based on result
         if (isCancer) {
             resultTitle.textContent = "ALTO RIESGO";
             resultTitle.className = "result-title-danger";
+            resultMajorityClass.style.color = "var(--danger)";
             confidenceCircle.className.baseVal = "circle danger";
             
             resultDetails.innerHTML = `
@@ -142,6 +161,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             resultTitle.textContent = "BAJO RIESGO";
             resultTitle.className = "result-title-success";
+            resultMajorityClass.style.color = "var(--success)";
             confidenceCircle.className.baseVal = "circle success";
             
             resultDetails.innerHTML = `
@@ -150,6 +170,32 @@ document.addEventListener('DOMContentLoaded', () => {
                     El modelo no detectó características fuertemente asociadas a melanoma. Sin embargo, mantén revisiones periódicas con tu médico.
                 </p>
             `;
+        }
+
+        // Render probabilities list
+        if (data.probabilities) {
+            let probsHtml = '<h3>Probabilidades por Clase</h3>';
+            for (const [className, prob] of Object.entries(data.probabilities)) {
+                const probPercent = (prob * 100).toFixed(1);
+                // Assign color based on class
+                let barColor = 'var(--primary)';
+                if (className.toLowerCase().includes('melanoma')) barColor = 'var(--danger)';
+                else if (className.toLowerCase().includes('common nevus')) barColor = 'var(--success)';
+                
+                probsHtml += `
+                    <div class="prob-item">
+                        <div class="prob-label">${className}</div>
+                        <div class="prob-bar-container">
+                            <div class="prob-bar" style="width: ${probPercent}%; background-color: ${barColor}"></div>
+                        </div>
+                        <div class="prob-value">${probPercent}%</div>
+                    </div>
+                `;
+            }
+            probabilitiesList.innerHTML = probsHtml;
+            probabilitiesList.classList.remove('hidden');
+        } else {
+            probabilitiesList.classList.add('hidden');
         }
     }
 

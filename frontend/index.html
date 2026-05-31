@@ -55,8 +55,20 @@
             <div class="result-card">
                 <div class="result-header">
                     <h2 id="result-title">Resultado</h2>
+                    <div class="result-subtitle" id="result-majority-class"></div>
                 </div>
                 <div class="result-body">
+                    <div class="result-images-container">
+                        <div class="result-image-box">
+                            <img id="result-original-img" src="" alt="Imagen Original">
+                            <p>Original</p>
+                        </div>
+                        <div class="result-image-box">
+                            <img id="result-gradcam-img" src="" alt="Grad-CAM">
+                            <p>Atención del Modelo</p>
+                        </div>
+                    </div>
+                    
                     <div class="confidence-container">
                         <svg class="circular-chart" viewBox="0 0 36 36">
                             <path class="circle-bg"
@@ -76,6 +88,10 @@
                     </div>
                     <div class="result-details" id="result-details">
                         <!-- Detalles inyectados por JS -->
+                    </div>
+                    <div class="probabilities-list" id="probabilities-list">
+                        <h3>Probabilidades por Clase</h3>
+                        <!-- Lista inyectada por JS -->
                     </div>
                 </div>
                 <button class="reset-btn" id="reset-btn">Analizar otra imagen</button>
