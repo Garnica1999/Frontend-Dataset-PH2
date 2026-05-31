@@ -69,11 +69,12 @@ except Exception as e:
 # 2.5 LÓGICA DE GRAD-CAM (CORREGIDA PARA MODELOS ANIDADOS)
 # ==============================================================================
 def make_gradcam_heatmap(img_array, main_model, pred_index=None):
-    """Genera el mapa de calor Grad-CAM soportando la capa PreprocessLayer y el Backbone."""
-    # 1. Identificar infaliblemente el backbone anidado (ResNet50)
+    """Genera el mapa de calor Grad-CAM con búsqueda robusta de la última capa convolucional."""
+    
+    # 1. Identificar el backbone anidado (ResNet50)
     backbone = None
     for layer in main_model.layers:
-        if hasattr(layer, 'layers'):  # La forma segura de detectar un sub-modelo en Keras 3
+        if hasattr(layer, 'layers'): 
             backbone = layer
             break
             
@@ -81,46 +82,45 @@ def make_gradcam_heatmap(img_array, main_model, pred_index=None):
         print("No se detectó un modelo anidado (backbone).")
         return np.zeros((img_array.shape[1], img_array.shape[2]))
 
-    # 2. Encontrar la última capa convolucional dentro del backbone
+    # 2. Búsqueda SEGURA de la última capa convolucional
     last_conv_layer = None
     for layer in reversed(backbone.layers):
-        shape = layer.output_shape
-        if isinstance(shape, list):
-            shape = shape[0]
-        if isinstance(shape, tuple) and len(shape) == 4:
+        # En lugar de consultar output_shape (que falla en capas Activation),
+        # buscamos explícitamente el tipo de capa Conv2D. Es 100% seguro.
+        if isinstance(layer, tf.keras.layers.Conv2D):
             last_conv_layer = layer
             break
             
     if last_conv_layer is None:
-        print("No se encontró una capa convolucional 4D.")
+        print("No se encontró una capa Conv2D en el backbone.")
         return np.zeros((img_array.shape[1], img_array.shape[2]))
 
     try:
-        # 3. Crear el sub-modelo de gradientes apuntando al backbone
+        # 3. Crear el sub-modelo de gradientes
         grad_model = tf.keras.models.Model(
             inputs=backbone.inputs,
             outputs=[last_conv_layer.output, backbone.output]
         )
         
         with tf.GradientTape() as tape:
-            # A. Pasar la imagen por las capas PREVIAS al backbone (Tu PreprocessLayer)
+            # Pasar la imagen por las capas PREVIAS al backbone (Tu PreprocessLayer)
             x = img_array
             for layer in main_model.layers:
                 if layer == backbone:
                     break
                 x = layer(x)
                 
-            # B. Pasar el tensor procesado por el backbone
+            # Pasar el tensor por el backbone
             conv_outputs, backbone_outputs = grad_model(x)
             tape.watch(conv_outputs)
             
-            # C. Pasar por las capas POSTERIORES (GlobalAvgPooling, Dense, Dropout...)
+            # Pasar por las capas POSTERIORES (GlobalAvgPooling, Dense, Dropout...)
             y = backbone_outputs
             start_idx = main_model.layers.index(backbone) + 1
             for layer in main_model.layers[start_idx:]:
                 y = layer(y)
                 
-            # D. Extraer la predicción final
+            # Extraer la predicción final
             preds = y
             if pred_index is None:
                 pred_index = tf.argmax(preds[0])
@@ -130,10 +130,11 @@ def make_gradcam_heatmap(img_array, main_model, pred_index=None):
         grads = tape.gradient(class_channel, conv_outputs)
         pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
         
-        # 5. Construir el heatmap
+        # 5. Construir el heatmap final
         heatmap = conv_outputs[0] @ pooled_grads[..., tf.newaxis]
         heatmap = tf.squeeze(heatmap)
         heatmap = tf.maximum(heatmap, 0) / tf.math.reduce_max(heatmap)
+        
         return heatmap.numpy()
 
     except Exception as e:
