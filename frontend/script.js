@@ -124,8 +124,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Set Images
         resultOriginalImg.src = imagePreview.src;
-        if (data.gradcam_base64) {
-            resultGradcamImg.src = `data:image/jpeg;base64,${data.gradcam_base64}`;
+        if (data.gradcam_url) {
+            resultGradcamImg.src = data.gradcam_url;
             resultGradcamImg.parentElement.classList.remove('hidden');
         } else {
             resultGradcamImg.parentElement.classList.add('hidden');

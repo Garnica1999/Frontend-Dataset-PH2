@@ -14,6 +14,7 @@ from tensorflow.keras.applications.resnet50 import preprocess_input as resnet_pr
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input as mbn_preprocess
 import cv2
 import base64
+from datetime import datetime
 
 # ==============================================================================
 # 1. REGISTRO DE LA CAPA CUSTOM (Crucial para poder cargar el modelo)
@@ -152,8 +153,8 @@ def make_gradcam_heatmap(img_array, model, pred_index=None):
         traceback.print_exc()
         return np.zeros((img_array.shape[1], img_array.shape[2]))
 
-def overlay_gradcam(img_tensor, heatmap):
-    """Superpone el heatmap sobre la imagen original."""
+def overlay_gradcam(img_tensor, heatmap, original_filename):
+    """Superpone el heatmap sobre la imagen original y la guarda en disco."""
     img = img_tensor[0].numpy()
     # Asegurar que img esté en 0-255 uint8
     if np.max(img) <= 1.0:
@@ -169,10 +170,20 @@ def overlay_gradcam(img_tensor, heatmap):
     # Superponer con 40% de opacidad para el heatmap
     superimposed_img = cv2.addWeighted(img, 0.6, heatmap, 0.4, 0)
     
-    # Convertir a base64
-    _, buffer = cv2.imencode('.jpg', cv2.cvtColor(superimposed_img, cv2.COLOR_RGB2BGR))
-    base64_str = base64.b64encode(buffer).decode('utf-8')
-    return base64_str
+    # Guardar en la carpeta gramcam
+    now_str = datetime.now().strftime("%d-%m-%Y-%H-%M-%S")
+    # Limpiar nombre original de extensiones y caracteres problemáticos
+    safe_name = os.path.splitext(original_filename)[0].replace(" ", "_")
+    filename = f'{now_str}_{safe_name}-gramcam.jpg'
+    
+    gramcam_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "gramcam")
+    if not os.path.exists(gramcam_dir):
+        os.makedirs(gramcam_dir)
+        
+    save_path = os.path.join(gramcam_dir, filename)
+    cv2.imwrite(save_path, cv2.cvtColor(superimposed_img, cv2.COLOR_RGB2BGR))
+    
+    return f"/gramcam/{filename}"
 
 # ==============================================================================
 # 3. ENDPOINT DE PREDICCIÓN CON TTA (EXPERIMENTO 13)
@@ -227,10 +238,12 @@ async def predict(image: UploadFile = File(...)):
         # 3.6 Generar Grad-CAM
         try:
             heatmap = make_gradcam_heatmap(img_tensor, model, pred_index=idx_ganador)
-            gradcam_base64 = overlay_gradcam(img_tensor, heatmap)
+            gradcam_url = overlay_gradcam(img_tensor, heatmap, image.filename)
         except Exception as e:
+            import traceback
             print(f"Error al generar Grad-CAM overlay: {e}")
-            gradcam_base64 = None
+            traceback.print_exc()
+            gradcam_url = None
 
         return JSONResponse(content={
             "is_cancer": is_cancer,
@@ -238,15 +251,21 @@ async def predict(image: UploadFile = File(...)):
             "predicted_class": clase_predicha,
             "probabilities": detalles,
             "filename": image.filename,
-            "gradcam_base64": gradcam_base64
+            "gradcam_url": gradcam_url
         })
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error durante la inferencia: {str(e)}")
 
 # ==============================================================================
-# 4. SERVIR EL FRONTEND ESTÁTICO
+# 4. SERVIR ARCHIVOS ESTÁTICOS Y EL FRONTEND
 # ==============================================================================
+# Servir la carpeta gramcam
+gramcam_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "gramcam")
+if not os.path.exists(gramcam_dir):
+    os.makedirs(gramcam_dir)
+app.mount("/gramcam", StaticFiles(directory=gramcam_dir), name="gramcam")
+
 frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
 if os.path.exists(frontend_path):
     app.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")
