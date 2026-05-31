@@ -73,13 +73,28 @@ except Exception as e:
 def find_last_conv_layer(model):
     """Busca dinámicamente la última capa convolucional (salida 4D)."""
     for layer in reversed(model.layers):
-        if len(layer.output_shape) == 4:
-            return layer.name
         # Si es un modelo anidado (backbone)
-        elif isinstance(layer, tf.keras.Model):
+        if isinstance(layer, tf.keras.Model):
             for inner_layer in reversed(layer.layers):
-                if len(inner_layer.output_shape) == 4:
-                    return layer.name, inner_layer.name
+                try:
+                    shape = inner_layer.output_shape
+                    # output_shape a veces es una lista de tuplas en modelos con múltiples salidas
+                    if isinstance(shape, list):
+                        shape = shape[0]
+                    if isinstance(shape, tuple) and len(shape) == 4:
+                        return layer.name, inner_layer.name
+                except Exception:
+                    pass
+        
+        try:
+            shape = layer.output_shape
+            if isinstance(shape, list):
+                shape = shape[0]
+            if isinstance(shape, tuple) and len(shape) == 4:
+                return layer.name
+        except Exception:
+            pass
+            
     return None
 
 def make_gradcam_heatmap(img_array, model, pred_index=None):
