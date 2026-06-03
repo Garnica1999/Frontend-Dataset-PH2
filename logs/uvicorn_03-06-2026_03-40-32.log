@@ -1,0 +1,114 @@
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1780476033.201229   12734 cpu_feature_guard.cc:227] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: AVX2 FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+I0000 00:00:1780476035.512492   12734 gpu_device.cc:2043] Created device /job:localhost/replica:0/task:0/device:GPU:0 with 155 MB memory:  -> device: 0, name: NVIDIA GeForce GTX 1080, pci bus id: 0000:01:00.0, compute capability: 6.1
+INFO:     Started server process [12734]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+Cargando modelo de Inteligencia Artificial (Exp 7)...
+¡Modelo cargado exitosamente!
+Cargando modelo Tabular (Exp 14)...
+¡Modelo tabular cargado exitosamente!
+INFO:     192.168.1.4:46756 - "GET / HTTP/1.1" 304 Not Modified
+I0000 00:00:1780476042.195035   12802 service.cc:153] XLA service 0x7f0fb8065670 initialized for platform CUDA (this does not guarantee that XLA will be used). Devices:
+I0000 00:00:1780476042.195066   12802 service.cc:161]   StreamExecutor [0]: NVIDIA GeForce GTX 1080, Compute Capability 6.1 (Driver: 13.0.0; Runtime: 12.4.0; Toolkit: 12.5.0; DNN: 9.10.1)
+I0000 00:00:1780476042.259410   12802 dump_mlir_util.cc:269] disabling MLIR crash reproducer, set env var `MLIR_CRASH_REPRODUCER_DIRECTORY` to enable.
+I0000 00:00:1780476042.713019   12802 cuda_dnn.cc:461] Loaded cuDNN version 91001
+W0000 00:00:1780476042.912582   12802 bfc_allocator.cc:311] Allocator (GPU_0_bfc) ran out of memory trying to allocate 16.56MiB with freed_by_count=0. The caller indicates that this is not a failure, but this may mean that there could be performance gains if more memory were available.
+W0000 00:00:1780476042.918794   12802 op_kernel.cc:1858] OP_REQUIRES failed at xla_ops.cc:602 : RESOURCE_EXHAUSTED: Out of memory while trying to allocate 16.56MiB. [tf-allocator-allocation-error='']
+W0000 00:00:1780476042.918872   12802 local_rendezvous.cc:412] Local rendezvous is aborting with status: RESOURCE_EXHAUSTED: Out of memory while trying to allocate 16.56MiB.
+	 [[{{node StatefulPartitionedCall}}]]
+Hint: If you want to see a list of allocated tensors when OOM happens, add report_tensor_allocations_upon_oom to RunOptions for current allocation info. This isn't available when running in Eager mode.
+ [tf-allocator-allocation-error='']
+Traceback (most recent call last):
+  File "/home/carlos/Git/Frontend-Dataset-PH2/backend/app.py", line 332, in predict
+    probs_array, gradcam_url = await process_image()
+  File "/home/carlos/Git/Frontend-Dataset-PH2/backend/app.py", line 243, in process_image
+    proba_sum = model.predict(img_tensor, verbose=0)
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/site-packages/keras/src/utils/traceback_utils.py", line 122, in error_handler
+    raise e.with_traceback(filtered_tb) from None
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/site-packages/tensorflow/python/eager/execute.py", line 53, in quick_execute
+    tensors = pywrap_tfe.TFE_Py_Execute(ctx._handle, device_name, op_name,
+tensorflow.python.framework.errors_impl.ResourceExhaustedError: Graph execution error:
+
+Detected at node StatefulPartitionedCall defined at (most recent call last):
+  File "/home/carlos/miniconda3/envs/ia_stable/bin/uvicorn", line 6, in <module>
+
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/site-packages/click/core.py", line 1524, in __call__
+
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/site-packages/click/core.py", line 1445, in main
+
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/site-packages/click/core.py", line 1308, in invoke
+
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/site-packages/click/core.py", line 877, in invoke
+
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/site-packages/uvicorn/main.py", line 441, in main
+
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/site-packages/uvicorn/main.py", line 620, in run
+
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/site-packages/uvicorn/server.py", line 75, in run
+
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/site-packages/uvicorn/_compat.py", line 60, in asyncio_run
+
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/asyncio/base_events.py", line 636, in run_until_complete
+
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/asyncio/base_events.py", line 603, in run_forever
+
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/asyncio/base_events.py", line 1909, in _run_once
+
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/asyncio/events.py", line 80, in _run
+
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/site-packages/uvicorn/protocols/http/h11_impl.py", line 415, in run_asgi
+
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/site-packages/fastapi/applications.py", line 1159, in __call__
+
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/site-packages/starlette/applications.py", line 90, in __call__
+
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/site-packages/starlette/middleware/errors.py", line 164, in __call__
+
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/site-packages/starlette/routing.py", line 660, in __call__
+
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/site-packages/starlette/routing.py", line 680, in app
+
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/site-packages/starlette/routing.py", line 276, in handle
+
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/site-packages/fastapi/routing.py", line 134, in app
+
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/site-packages/fastapi/routing.py", line 120, in app
+
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/site-packages/fastapi/routing.py", line 674, in app
+
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/site-packages/fastapi/routing.py", line 328, in run_endpoint_function
+
+  File "/home/carlos/Git/Frontend-Dataset-PH2/backend/app.py", line 332, in predict
+
+  File "/home/carlos/Git/Frontend-Dataset-PH2/backend/app.py", line 243, in process_image
+
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/site-packages/keras/src/utils/traceback_utils.py", line 117, in error_handler
+
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/site-packages/keras/src/backend/tensorflow/trainer.py", line 588, in predict
+
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/site-packages/keras/src/backend/tensorflow/trainer.py", line 282, in one_step_on_data_distributed
+
+  File "/home/carlos/miniconda3/envs/ia_stable/lib/python3.10/site-packages/keras/src/backend/tensorflow/trainer.py", line 125, in wrapper
+
+Out of memory while trying to allocate 16.56MiB.
+	 [[{{node StatefulPartitionedCall}}]]
+Hint: If you want to see a list of allocated tensors when OOM happens, add report_tensor_allocations_upon_oom to RunOptions for current allocation info. This isn't available when running in Eager mode.
+ [Op:__inference_one_step_on_data_distributed_5347]
+INFO:     192.168.1.4:46756 - "POST /predict HTTP/1.1" 500 Internal Server Error
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [12734]
