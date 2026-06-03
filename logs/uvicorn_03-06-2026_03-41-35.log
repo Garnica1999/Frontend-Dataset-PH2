@@ -1,0 +1,26 @@
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1780476095.686673   12974 cpu_feature_guard.cc:227] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: AVX2 FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+I0000 00:00:1780476098.017399   12974 gpu_device.cc:2043] Created device /job:localhost/replica:0/task:0/device:GPU:0 with 7496 MB memory:  -> device: 0, name: NVIDIA GeForce GTX 1080, pci bus id: 0000:01:00.0, compute capability: 6.1
+INFO:     Started server process [12974]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+Cargando modelo de Inteligencia Artificial (Exp 7)...
+¡Modelo cargado exitosamente!
+Cargando modelo Tabular (Exp 14)...
+¡Modelo tabular cargado exitosamente!
+INFO:     192.168.1.4:39404 - "GET / HTTP/1.1" 304 Not Modified
+I0000 00:00:1780476107.157388   13044 service.cc:153] XLA service 0x7f59c4065850 initialized for platform CUDA (this does not guarantee that XLA will be used). Devices:
+I0000 00:00:1780476107.157419   13044 service.cc:161]   StreamExecutor [0]: NVIDIA GeForce GTX 1080, Compute Capability 6.1 (Driver: 13.0.0; Runtime: 12.4.0; Toolkit: 12.5.0; DNN: 9.10.1)
+I0000 00:00:1780476107.222179   13044 dump_mlir_util.cc:269] disabling MLIR crash reproducer, set env var `MLIR_CRASH_REPRODUCER_DIRECTORY` to enable.
+I0000 00:00:1780476107.674448   13044 cuda_dnn.cc:461] Loaded cuDNN version 91001
+I0000 00:00:1780476110.574167   13044 device_compiler.h:208] Compiled cluster using XLA!  This line is logged at most once for the lifetime of the process.
+INFO:     192.168.1.4:56376 - "POST /predict HTTP/1.1" 200 OK
+INFO:     192.168.1.4:56376 - "GET /gramcam/03-06-2026-03-41-52_IMD403_test-gramcam.jpg HTTP/1.1" 200 OK
+INFO:     192.168.1.4:34436 - "POST /predict HTTP/1.1" 200 OK
+INFO:     192.168.1.4:34436 - "GET /gramcam/03-06-2026-03-42-14_IMD080_test-gramcam.jpg HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [12974]
