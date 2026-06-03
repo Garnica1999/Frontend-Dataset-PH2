@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detección de Melanoma</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+</head>
+<body>
+    <div class="background-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+    
+    <main class="container">
+        <header>
+            <h1>Detección de Melanoma</h1>
+            <p>Analiza la probabilidad de malignidad usando IA en imágenes y datos clínicos.</p>
+        </header>
+
+        <section class="model-selector-section">
+            <div class="selector-card">
+                <label for="model-selector">Selecciona el Modelo:</label>
+                <select id="model-selector" class="model-select">
+                    <option value="resnet50" selected>ResNet50 (Solo Imagen)</option>
+                    <option value="tabular">Tabular (Solo Datos Clínicos)</option>
+                    <option value="hibrido">Híbrido (Ensamble Imagen + Datos)</option>
+                </select>
+            </div>
+        </section>
+
+        <section class="tabular-section hidden" id="tabular-section">
+            <div class="tabular-card">
+                <h2>Datos Clínicos (Dataset PH2)</h2>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="asymmetry">Asymmetry</label>
+                        <select id="asymmetry" name="asymmetry">
+                            <option value="0">0 - Fully Symmetric</option>
+                            <option value="1">1 - Symmetric in 1 axe</option>
+                            <option value="2">2 - Fully Asymmetric</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="pigment_network">Pigment Network</label>
+                        <select id="pigment_network" name="pigment_network">
+                            <option value="A">Absent (A)</option>
+                            <option value="AT">Atypical (AT)</option>
+                            <option value="T">Typical (T)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="dots_globules">Dots/Globules</label>
+                        <select id="dots_globules" name="dots_globules">
+                            <option value="A">Absent (A)</option>
+                            <option value="AT">Atypical (AT)</option>
+                            <option value="P">Present (P)</option>
+                            <option value="T">Typical (T)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="streaks">Streaks</label>
+                        <select id="streaks" name="streaks">
+                            <option value="A">Absent (A)</option>
+                            <option value="P">Present (P)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="regression_areas">Regression Areas</label>
+                        <select id="regression_areas" name="regression_areas">
+                            <option value="A">Absent (A)</option>
+                            <option value="P">Present (P)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="blue_whitish_veil">Blue-Whitish Veil</label>
+                        <select id="blue_whitish_veil" name="blue_whitish_veil">
+                            <option value="A">Absent (A)</option>
+                            <option value="P">Present (P)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group colors-group">
+                    <label>Colors</label>
+                    <div class="checkbox-grid">
+                        <label><input type="checkbox" name="colors" value="1"> White</label>
+                        <label><input type="checkbox" name="colors" value="2"> Red</label>
+                        <label><input type="checkbox" name="colors" value="3"> Light-Brown</label>
+                        <label><input type="checkbox" name="colors" value="4"> Dark-Brown</label>
+                        <label><input type="checkbox" name="colors" value="5"> Blue-Gray</label>
+                        <label><input type="checkbox" name="colors" value="6"> Black</label>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="upload-section" id="upload-section">
+            <div class="drop-zone" id="drop-zone">
+                <div class="drop-zone-content">
+                    <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                    </svg>
+                    <p class="drop-zone-text">Arrastra tu imagen aquí o haz clic para subir</p>
+                    <span class="file-hint">Formatos soportados: JPG, PNG</span>
+                </div>
+                <input type="file" id="file-input" accept="image/*" hidden>
+            </div>
+            
+            <div class="preview-container hidden" id="preview-container">
+                <div class="image-wrapper">
+                    <img id="image-preview" src="" alt="Vista previa">
+                    <button class="remove-btn" id="remove-btn" aria-label="Eliminar imagen">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <section class="action-section" style="margin-top: 1rem;">
+            <button class="analyze-btn" id="analyze-btn">
+                <span>Analizar Datos</span>
+            </button>
+        </section>
+
+        <section class="loading-section hidden" id="loading-section">
+            <div class="loader"></div>
+            <p>Analizando con el modelo de IA...</p>
+        </section>
+
+        <section class="result-section hidden" id="result-section">
+            <div class="result-card">
+                <div class="result-header">
+                    <h2 id="result-title">Resultado</h2>
+                    <div class="result-subtitle" id="result-majority-class"></div>
+                </div>
+                <div class="result-body">
+                    <div class="result-images-container">
+                        <div class="result-image-box">
+                            <img id="result-original-img" src="" alt="Imagen Original">
+                            <p>Original</p>
+                        </div>
+                        <div class="result-image-box">
+                            <img id="result-gradcam-img" src="" alt="Grad-CAM">
+                            <p>Atención del Modelo</p>
+                        </div>
+                    </div>
+                    
+                    <div class="confidence-container">
+                        <svg class="circular-chart" viewBox="0 0 36 36">
+                            <path class="circle-bg"
+                                d="M18 2.0845
+                                a 15.9155 15.9155 0 0 1 0 31.831
+                                a 15.9155 15.9155 0 0 1 0 -31.831"
+                            />
+                            <path class="circle" id="confidence-circle"
+                                stroke-dasharray="0, 100"
+                                d="M18 2.0845
+                                a 15.9155 15.9155 0 0 1 0 31.831
+                                a 15.9155 15.9155 0 0 1 0 -31.831"
+                            />
+                            <text x="18" y="20.35" class="percentage" id="confidence-text">0%</text>
+                        </svg>
+                        <p class="confidence-label">Confianza del modelo</p>
+                    </div>
+                    <div class="result-details" id="result-details">
+                        <!-- Detalles inyectados por JS -->
+                    </div>
+                    <div class="probabilities-list" id="probabilities-list">
+                        <h3>Probabilidades por Clase</h3>
+                        <!-- Lista inyectada por JS -->
+                    </div>
+                </div>
+                <div class="action-buttons">
+                    <button class="reset-btn" id="reset-btn">Analizar otra imagen</button>
+                    <button class="pdf-btn" id="pdf-btn">Descargar Reporte PDF</button>
+                </div>
+            </div> 
+        </section>
+
+        <div id="history-sidebar" class="history-sidebar collapsed">
+            <button id="toggle-history-btn" class="toggle-history-btn">📋 Recientes</button>
+            <div class="history-content">
+                <h3>Análisis Recientes</h3>
+                <div id="history-list"></div>
+                <button id="clear-history-btn" class="clear-history-btn">Borrar Historial</button>
+            </div>
+        </div>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>
